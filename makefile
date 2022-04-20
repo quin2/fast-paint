@@ -9,4 +9,6 @@ make: buffer.c
 	--export-all -Wl,\
 	--stack-first -Wl,\
 	--initial-memory=65536000 \
+	-Os \
+	-DNDEBUG \
 	-o buffer.wasm buffer.c
