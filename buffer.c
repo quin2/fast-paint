@@ -32,6 +32,16 @@ struct point pB;
 
 int eraseMode;
 
+//variables for layers API
+int layers[10];
+int* visibleLayers;
+
+int cL; 		//layer number we are drawing on
+int numLayers;	//number of layers at the moment
+
+int* layersPtr; //array containing layer data
+
+
  uint32_t AlphaBlendPixels(uint32_t p1, uint32_t p2)
 {
     static const int AMASK = 0xFF000000;
@@ -357,3 +367,47 @@ void setColor(int red, int green, int blue){
 	GREEN = green;
 	BLUE = blue;
 }
+
+//layers API below: (draft of what it would look like)
+
+//1.0 MVP--------------------------------------------
+
+/*
+//add a layer to the top of the stack
+void addLayer(){
+	numLayers++;
+	layers[numLayers] = numLayers;
+	visibleLayers[numLayers] = 1;
+}
+
+//select given layer for drawing
+void selectActiveLayer(int layer){
+	if(visibleLayers[layer] == 1){
+		activeLayer = layer;
+	}
+}
+
+//remove current layer from system
+void removeLayer(int layer){
+
+}
+
+//set layer as visible or invisible
+void toggleLayerVisibility(int layer){
+	int status = visibleLayers[layer];
+	if(status == 0){
+		visibleLayers[layer] = 1;
+	} else {
+		visibleLayers[layer] = 0;
+	}
+}
+
+//list of layers can be grabbed in JS side of things!
+
+//2.0---------------------
+
+//set order of layers
+void setLayerOrder(){
+
+}
+*/

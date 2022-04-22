@@ -114,6 +114,8 @@ async function main(){
 	}
 	updateAlpha();
 
+	//layer control (todo)
+
 	canvas.addEventListener('mousedown', function(e){
 		let x = (event.clientX - rect.left);
     	let y = (event.clientY - rect.top);
