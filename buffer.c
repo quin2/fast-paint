@@ -19,6 +19,7 @@ int* overlay;
 int RED;
 int BLUE;
 int GREEN;
+int ALPHA;
 
 struct point
 {
@@ -29,12 +30,7 @@ struct point
 struct point pA;
 struct point pB;
 
-//a is dest, b is source
-uint8_t alpha(uint8_t ca, uint8_t cb, uint8_t a){
-	return (a * ca + (256 - a) * cb) >> 8;
-
-	//return (a * (cb - ca)) + cb;
-}
+int eraseMode;
 
  uint32_t AlphaBlendPixels(uint32_t p1, uint32_t p2)
 {
@@ -65,98 +61,53 @@ void dealloc(){
 	free(ptr);
 }
 
-void computeMask(int width, int *brush, int *brushGuide){
-	/*
-	int r = R-1;
-	for (int y = 0; y < 2*r; y++)
-	{
-	    for (int x = 0; x < 2*r; x++)
-	    {
-	        int deltaX = r - x;
-	        int deltaY = r - y;
-	        double distance = sqrt(deltaX * deltaX + deltaY * deltaY);
-	        int color = (int) 255.0 * ((double)r - distance);
-	        if(color < 0){
-	        	color = 0;
-	        }
-	        if(color > 255){
-	        	color = 255;
-	        }
-
-	        brush[((int)x) + ((int)y)*width] = color;
-      		
-      		//refine brush guide to make it less 'chunky'
-	        if((double)r-distance > 0 && (double)r-distance < 2){
-	        	brushGuide[((int)x) + ((int)y)*width] = 255;
-	        }
-
-	        if((x*x+y*y < r*r + r * 0.8f) && (x*x+y*y > r*r - r)){
-		    	brushGuide[((int)x) + ((int)y)*width] = 255;
-		    }
-	    }
-	}
-	*/
-
+void computeCircleMask(int width, double alpha, int *brush, int *brushGuide){
 	//brush engine2 below:
+	//int r = R - 1;
 	int r = R - 1;
 
 	for(int y = -r; y <= r; y++){
-	    for(int x = -r; x <= r; x++){
-	    	int realx = x + r;
-	    	int realy = y + r;
-	     //fill in mask
-	      if(x*x+y*y <= r*r + r * 0.8f){
-	      	int deltaX = r - realx;
-	      	int deltaY = r - realy;
+		for(int x = -r; x <= r; x++){
+			//calculate offset
+			int realx = x + r;
+			int realy = y + r;
 
-	      	double distance = sqrt(deltaX * deltaX + deltaY * deltaY);
-	        int color = (int) 255.0 * ((double)r - distance);
+			if(realx < 0 || realy < 0) continue;
 
-	      	if(color < 0 ) color = 0;
-	      	if(color > 255) color = 255;
+			//fill in mask
+			if(x*x+y*y <= r*r + r * 0.8f){
+				int deltaX = r - realx;
+				int deltaY = r - realy;
 
-	      	brush[realx + (realy*width)] = color;
-	      }
+				double distance = sqrt(deltaX * deltaX + deltaY * deltaY);
+				int color = (int) 255.0 * ((double)r - distance);
 
-	      //fill in guide mask
-	      if((x*x+y*y < r*r + r *0.8f) && (x*x+y*y > r*r - r)){
-	      	//there are cases where we are getting -1 sometimes..... for realx and realy
-	      	if(realx > -1 && realy > -1){
-	      		brushGuide[realx + (realy*width)] = 255;
-	      	}
-	        
-	      }
-	    }    
-  	}
+				if(color < 0 ) color = 0;
+				if(color > 255) color = 255;
+
+				brush[realx + (realy*width)] = (uint8_t) color * alpha;
+			}
+
+			//fill in guide mask
+			if((x*x+y*y < r*r + r *0.8f) && (x*x+y*y > r*r - r)){
+				brushGuide[realx + (realy*width)] = 255;
+			}
+		}    
+	}
 }
 
-void computeEraserMask(int width, int *brush, int *brushGuide){
-	int r = R-1;
-	for (int y = 0; y < 2*r; y++)
-	{
-	    for (int x = 0; x < 2*r; x++)
-	    {
-	        int deltaX = r - x;
-	        int deltaY = r - y;
-	        double distance = sqrt(deltaX * deltaX + deltaY * deltaY);
-	        int color = (int) 255.0 * ((double)r - distance);
-	        if(color < 0){
-	        	color = 0;
-	        }
-	        if(color > 0){
-	        	color = 255;
-	        }
+void computeSquareMask(int width, double alpha, int *brush, int *brushGuide){
+	//int r = R - 1;
+	int r = R - 1;
 
-	        if(color == 0){
-	        	color = 1;
-	        }
-	        
-	        brush[((int)x) + ((int)y)*width] = color;
-      
-	        if((double)r-distance > 0 && (double)r-distance < 2){
-	        	brushGuide[((int)x) + ((int)y)*width] = 255;
-	        }
-	    }
+	for(int y = 0; y <= r*2; y++){
+		for(int x = 0; x <= r*2; x++){
+			brush[x + (y*width)] = (uint8_t) 255 * alpha;
+
+			if(x == 0 || x == (r*2) || y == 0 || y == (r*2)){
+				brushGuide[x + (y * width)] = 255;
+			}
+		}
 	}
 }
 
@@ -219,9 +170,7 @@ void drawBuffer(int bW, int *buffer){
 			uint8_t newRed = RED;
 			uint8_t newGreen = GREEN;
 			uint8_t newBlue = BLUE;
-			uint8_t newA = (uint8_t) buffer[off]; //* 0.5;// by 0.5
-
-			//newA = 255;
+			uint8_t newA = (uint8_t) buffer[off]; 
 
 			int oldColor = alphaMask[off];
 			int bitMask = ((1<<8)-1);
@@ -229,24 +178,15 @@ void drawBuffer(int bW, int *buffer){
 
 			uint32_t newColor = (newA << 24) | (newBlue << 16) | (newGreen << 8) | newRed;
 
-			if(oldA > 0){
-				uint8_t oldRed = oldColor & bitMask;
-				uint8_t oldGreen = (oldColor >> 8) & bitMask;
-				uint8_t oldBlue = (oldColor >> 16) & bitMask;
+			//edge case: blending eraser
+			if(eraseMode == 1 && newA != 255){
+				newColor = (newA << 24) | (255 << 16) | (255 << 8) | 255;
+			}
 
-				//thanks to https://stackoverflow.com/questions/1102692/how-to-alpha-blend-rgba-unsigned-byte-color-fast
-				newColor = AlphaBlendPixels(oldColor, newColor);
+			newColor = AlphaBlendPixels(oldColor, newColor);
 
-				//use AlphaBlendPixels
-
-				/*
-				newRed = alpha(RED, oldRed, newA);
-				newGreen = alpha(GREEN, oldGreen, newA);
-				newBlue = alpha(BLUE, oldBlue, newA);
-
-				newA = 255;
-				*/
-
+			if(eraseMode == 1 && newA == 255){
+				newColor = 0x00000000;
 			}
 
 			ptr[off] = newColor;
@@ -259,12 +199,12 @@ void clearScreen(){
 	for(int i = 0; i < WIDTH; i++){
 		for(int j = 0; j < HEIGHT; j++){
 			int off = (i * WIDTH + j);
-			ptr[off] = 0;
-			alphaMask[off] = 0;
+
+			alphaMask[off] = (255 << 24) | (255 << 16) | (255 << 8) | 255;
 			buffer[off] = 0;
 			overlay[off] = 0;
 
-			ptr[off] = (0 << 24) | (0 << 16) | (0 << 8) | 255;
+			ptr[off] = (255 << 24) | (255 << 16) | (255 << 8) | 255;
 		}
 	}
 }
@@ -302,12 +242,16 @@ void initSystem(){
 	ptr = (int*)malloc(nb * sizeof(int));
 	clearScreen();
 
-	computeMask(R*2, brush, brushGuide);
+	computeCircleMask(R*2, 1.0, brush, brushGuide);
 }
 
 void startPath(int pX, int pY){
 	pA.u = pX - R;
 	pA.v = pY - R;
+
+	//compute and infill
+	drawMask(pA.u, pA.v, WIDTH, buffer, R*2, brush);
+	drawBuffer(WIDTH, buffer);
 
 	return;
 }
@@ -338,8 +282,11 @@ void endPath(){
 }
 
 
-void setBrushRadius(int rin, int mode){
+void setBrushProperties(int rin, int mode, int alpha, int setEraseMode){
 	R = rin;
+
+	//this is really ugly, need to fix to use floats later
+	double a = alpha / 255.0;
 
 	clearOverlay();
 
@@ -349,13 +296,18 @@ void setBrushRadius(int rin, int mode){
 	clearBrushes();
 
 	if(mode == 0){
-		computeMask(R*2, brush, brushGuide);
+		computeCircleMask(R*2, a, brush, brushGuide); //circle mask
 	}
 
 	if(mode == 1){
-		computeMask(R*2, brush, brushGuide); //Eraser
+		computeSquareMask(R*2, a, brush, brushGuide); //square mask
 	}
+
+	eraseMode = setEraseMode;
+
+
 }
+
 
 int oldx = -1;
 int oldy = -1;
