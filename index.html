@@ -5,42 +5,92 @@
         <meta http-equiv="x-ua-compatible" content="ie=edge">
         <title>fast paint</title>
         <style>
+            html {
+                margin:  0px;
+                padding:  0px;
+            }
+
+            body{
+                margin:  0px;
+            }
+
         	#c {
         		border: 1px solid black;
                 image-rendering:  pixelated;
+                position: relative;
+                top: 0px;
+                left: 0px;
         	}
+
+            #drawArea {
+                background-color: gray;
+                overflow: scroll;
+                width:  80%;
+                height:  100vh;
+                float:  left;
+            }
+
+            #windowShim{
+                display:  flex;
+                align-items: center;
+                justify-content: center;
+
+                height:  100%;
+                width:  100%;
+
+                padding:  0px;
+            }
+
+            #controls {
+                float:  right;
+                width:  18%;
+                margin-left:  2%;
+                margin-top:  2%;
+            }
         </style>
     </head>
     <body>
-    	<script src="script.js"></script>
-    	<canvas id="c" height="500" width="500"></canvas>
+        <script src="script.js"></script>
 
-    	<div><button id="clear">clear</button></div>
+        <div id="drawArea">
+            <div id="windowShim">
+    	       <canvas id="c" height="500" width="500"></canvas>
+            </div>
+        </div>
 
-    	<input type="radio" id="circlebrush" name="brushT" checked="checked">
-    	<label for="circlebrush">Circle</label><br>
-    	<input type="radio" id="squarebrush" name="brushT">
-    	<label for="squarebrush">Square</label><br>
+        <div id="controls">
+        	<div><button id="reset">reset</button></div>
 
-        <input type="checkbox" id="eraseMode" name="eraseMode">
-        <label for="eraseMode">Erase</label>
+        	<input type="radio" id="circlebrush" name="brushT" checked="checked">
+        	<label for="circlebrush">Circle</label><br>
+        	<input type="radio" id="squarebrush" name="brushT">
+        	<label for="squarebrush">Square</label><br>
+            <input type="radio" id="cursorbrush" name="brushT">
+            <label for="cursorbrush">move</label><br>
 
-    	<div>brush width</div>
-    	<input type="range" min="1" max="100" value="10" id="sizeSlider"><span id="size"></span>
+            <input type="checkbox" id="eraseMode" name="eraseMode">
+            <label for="eraseMode">Erase</label>
 
-        <div>transparency</div>
-        <input type="range" min="0" max="255" value="255" id="alphaSlider"><span id="alpha"></span>
+        	<div>brush width</div>
+        	<input type="range" min="1" max="100" value="10" id="sizeSlider"><span id="size"></span>
 
-    	<div>color</div>
-    	<input type="color" id="brushC" value="#00ff00">
+            <div>transparency</div>
+            <input type="range" min="0" max="255" value="255" id="alphaSlider"><span id="alpha"></span>
 
-        <h2>layer controls</h2>
-        <div><button id="addLayer">add layer</button></div>
-        <div><button id="hideLayer">hide layer</button></div>
-        <div id="layerStatus">layer is not hidden</div>
-        <label for="layers">layers:</label>
-        <select name="layers" id="layers">
-            <option value="1">layer 1</option>
-        </select>
+        	<div>color</div>
+        	<input type="color" id="brushC" value="#00ff00">
+
+            <p>use shift + and shift - to zoom in and out of the canvas</p>
+
+            <h2>layer controls</h2>
+            <div><button id="addLayer">add layer</button></div>
+            <div><button id="hideLayer">toggle visibility</button></div>
+            <div><button id="clear">clear layer</button></div>
+            <div id="layerStatus">layer is not hidden</div>
+            <label for="layers">layers:</label>
+            <select name="layers" id="layers">
+                <option value="1">layer 1</option>
+            </select>
+        </div>
     </body>
 </html>

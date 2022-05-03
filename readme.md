@@ -32,16 +32,10 @@ I didn't really use anything like Emscripten either, to keep binary sizes small,
 
 This project was written in C with Wasi to handle memory allocation. To build it, you'll want to have a copy of clang handy, and have wasi set up on your machine as well. [This blog](https://depth-first.com/articles/2019/10/16/compiling-c-to-webassembly-and-running-it-without-emscripten/) had some great writing about how to set up everything you'll need. I also included the noCacheServer.py which is useful if you're making lots of chhanges to the binary and don't want your browser to cache it. If you just want to mess around with the binary, it's also included in this repo, and all you'll have to do is access the exposed functions to do specific stuff with the canvas. 
 
-	$CC \
-	--target=wasm32-unknown-wasi \
-	-ferror-limit=50 \
-	--sysroot /tmp/wasi-libc \
-	-nostartfiles -Wl,\
-	--import-memory -Wl,\
-	--no-entry -Wl,\
-	--export-all -Wl,\
-	--stack-first -Wl,\
-	--initial-memory=65536000 \
-	-Os \
-	-DNDEBUG \
-	-o buffer.wasm buffer.c
+## future work list
+* better anti-aliased circle brushes
+* remove layers and change layer order
+* wrap canvas functions in shell
+* image export
+* layer transparency
+* dynamic brushes w/pressure sensitivity

@@ -13,6 +13,9 @@ int* buffer;
 int* brush;
 int* brushGuide;
 
+int oldx = -1;
+int oldy = -1;
+
 int* alphaMask;
 int* overlay;
 
@@ -33,16 +36,16 @@ struct point pB;
 int eraseMode;
 
 //variables for layers API
-int layers[10];
-int* visibleLayers;
+uint8_t layers[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}; //initialize as all "invisible"
+int maxLayers = 10;
 
 int cL; 		//layer number we are drawing on
-int numLayers;	//number of layers at the moment
+int layerCount;	//number of layers at the moment
 
-int* layersPtr; //array containing layer data
+int** layersPtr; //array containing layer data
 
 
- uint32_t AlphaBlendPixels(uint32_t p1, uint32_t p2)
+uint32_t AlphaBlendPixels(uint32_t p1, uint32_t p2)
 {
     static const int AMASK = 0xFF000000;
     static const int RBMASK = 0x00FF00FF;
@@ -71,40 +74,87 @@ void dealloc(){
 	free(ptr);
 }
 
-void computeCircleMask(int width, double alpha, int *brush, int *brushGuide){
-	//brush engine2 below:
-	//int r = R - 1;
-	int r = R - 1;
 
-	for(int y = -r; y <= r; y++){
-		for(int x = -r; x <= r; x++){
-			//calculate offset
-			int realx = x + r;
-			int realy = y + r;
+void setBrushPixel(int *brush, int width, int x, int y, int value){
+	brush[x + (y * width)] = value;
+}
 
-			if(realx < 0 || realy < 0) continue;
-
-			//fill in mask
-			if(x*x+y*y <= r*r + r * 0.8f){
-				int deltaX = r - realx;
-				int deltaY = r - realy;
-
-				double distance = sqrt(deltaX * deltaX + deltaY * deltaY);
-				int color = (int) 255.0 * ((double)r - distance);
-
-				if(color < 0 ) color = 0;
-				if(color > 255) color = 255;
-
-				brush[realx + (realy*width)] = (uint8_t) color * alpha;
-			}
-
-			//fill in guide mask
-			if((x*x+y*y < r*r + r *0.8f) && (x*x+y*y > r*r - r)){
-				brushGuide[realx + (realy*width)] = 255;
-			}
-		}    
+void drawBrushLine(int *brush, int width, int x, int start_y, int end_y, int alpha){
+	for(int i = start_y; i <= end_y; i++){
+		setBrushPixel(brush, width, x, i, alpha);
 	}
 }
+
+void drawBrushLineH(int *brush, int width, int start_x, int end_x, int y, int alpha){
+	for(int i = start_x; i <= end_x; i++){
+		setBrushPixel(brush, width, i, y, alpha);
+	}
+}
+
+void setPixel4(int *brush, int *brushGuide, int width, int cx, int cy, int dx, int dy, int alpha, int flood, int direction){
+	if(direction == 1){
+		drawBrushLine(brush, width, (cx + dx), (cy - dy), (cy + dy), flood);
+		drawBrushLine(brush, width, (cx - dx), (cy - dy), (cy + dy), flood);
+	}
+	else if(direction == 0){
+		drawBrushLineH(brush, width, (cx - dx), (cx + dx), (cy + dy), flood);
+		drawBrushLineH(brush, width, (cx - dx), (cx + dx), (cy - dy), flood);
+	}
+	
+	//draw anti-aa outline	
+	setBrushPixel(brush, width, cx + dx, cy + dy, alpha);
+	setBrushPixel(brush, width, cx - dx, cy + dy, alpha);
+	setBrushPixel(brush, width, cx + dx, cy - dy, alpha);
+	setBrushPixel(brush, width, cx - dx, cy - dy, alpha);
+
+	//draw brush guide
+	setBrushPixel(brushGuide, width, cx + dx, cy + dy, 255);
+	setBrushPixel(brushGuide, width, cx - dx, cy + dy, 255);
+	setBrushPixel(brushGuide, width, cx + dx, cy - dy, 255);
+	setBrushPixel(brushGuide, width, cx - dx, cy - dy, 255);
+}
+
+//see https://stackoverflow.com/questions/54594822/xiaolin-wu-circle-algorithm-renders-circle-with-holes-inside
+void computeAACircleMask(int width, double alpha, int *brush, int *brushGuide){
+	int r = R - 1;
+	float maxTransparency = 255.0 * (float)alpha;
+
+	float radiusX = r;
+	float radiusY = r;
+	float radiusX2 = radiusX * radiusX;
+	float radiusY2 = radiusY * radiusY;
+
+	int drawLinesDirection = 1;
+
+	float quarter = roundf(radiusX2 / sqrtf(radiusX2 + radiusY2));
+	for(float _x = 0; _x <= quarter; _x++) {
+	    float _y = radiusY * sqrtf(1 - _x * _x / radiusX2);
+	    float error = _y - floorf(_y);
+
+	    float transparency = roundf(error * maxTransparency);
+	    int alpha = transparency;
+	    int alpha2 = maxTransparency - transparency;
+
+	    setPixel4(brush, brushGuide, width, r, r, (int)_x, (int)floorf(_y), alpha, maxTransparency, drawLinesDirection); //aloha
+	}
+
+	quarter = roundf(radiusY2 / sqrtf(radiusX2 + radiusY2));
+	for(float _y = 0; _y <= quarter; _y++) {
+	    float _x = radiusX * sqrtf(1 - _y * _y / radiusY2);
+	    float error = _x - floorf(_x);
+
+	    float transparency = roundf(error * maxTransparency);
+	    int alpha = transparency;
+	    int alpha2 = maxTransparency - transparency;
+
+	    drawLinesDirection = 0;
+
+	    setPixel4(brush, brushGuide, width, r, r, (int) floorf(_x), (int)_y, alpha, maxTransparency, drawLinesDirection); //alph
+	}
+	
+
+		//floodFillBrush(brush, width, r, r, maxTransparency, 1);
+	}
 
 void computeSquareMask(int width, double alpha, int *brush, int *brushGuide){
 	//int r = R - 1;
@@ -182,7 +232,7 @@ void drawBuffer(int bW, int *buffer){
 			uint8_t newBlue = BLUE;
 			uint8_t newA = (uint8_t) buffer[off]; 
 
-			int oldColor = alphaMask[off];
+			uint32_t oldColor = alphaMask[off];
 			int bitMask = ((1<<8)-1);
 			uint8_t oldA = (oldColor >> 24) & bitMask;
 
@@ -193,14 +243,28 @@ void drawBuffer(int bW, int *buffer){
 				newColor = (newA << 24) | (255 << 16) | (255 << 8) | 255;
 			}
 
+			//think that this might be the issue
+			//old color isn't alphaMask[off]
 			newColor = AlphaBlendPixels(oldColor, newColor);
 
+			//blend eraser
 			if(eraseMode == 1 && newA == 255){
 				newColor = 0x00000000;
 			}
 
-			ptr[off] = newColor;
+			layersPtr[cL][off] = newColor;
 
+		}
+	}
+}
+
+void setLayerColor(int layer, int color){
+	for(int i = 0; i < WIDTH; i++){
+		for(int j = 0; j < HEIGHT; j++){
+			int off = (i * WIDTH + j);
+
+			layersPtr[layer][off] = color;
+			alphaMask[off] = color;
 		}
 	}
 }
@@ -210,12 +274,31 @@ void clearScreen(){
 		for(int j = 0; j < HEIGHT; j++){
 			int off = (i * WIDTH + j);
 
-			alphaMask[off] = (255 << 24) | (255 << 16) | (255 << 8) | 255;
+			screen[off] = 0xffffffff;
+			layersPtr[cL][off] = 0xffffffff;
+
+			alphaMask[off] = 0xffffffff;
 			buffer[off] = 0;
 			overlay[off] = 0;
-
-			ptr[off] = (255 << 24) | (255 << 16) | (255 << 8) | 255;
 		}
+	}
+}
+
+void clearLayer(int layer){
+	for(int i = 0; i < WIDTH; i++){
+		for(int j = 0; j < HEIGHT; j++){
+			int off = (i * WIDTH + j);
+
+			layersPtr[layer][off] = (0 << 24) | (0 << 16) | (0 << 8) | 0;
+			alphaMask[off] = (0 << 24) | (0 << 16) | (0 << 8) | 0;
+		}
+	}
+}
+
+void clearCurrentLayer(){
+	clearLayer(cL);
+	if(cL == 0){
+		setLayerColor(cL, 0xffffffff);
 	}
 }
 
@@ -235,24 +318,6 @@ void clearOverlay(){
 			overlay[off] = 0;
 		}
 	}
-}
-
-void initSystem(){
-	R = 5;
-
-	int nbr = (2 * R) * (2 * R);
-	brush = (int*)malloc(nbr * sizeof(int));
-	brushGuide = (int*)malloc(nbr * sizeof(int));
-	clearBrushes();
-
-	int nb = WIDTH * HEIGHT;
-	buffer = (int*)malloc(nb * sizeof(int));
-	alphaMask = (int*)malloc(nb * sizeof(int));
-	overlay = (int*)malloc(nb * sizeof(int));
-	ptr = (int*)malloc(nb * sizeof(int));
-	clearScreen();
-
-	computeCircleMask(R*2, 1.0, brush, brushGuide);
 }
 
 void startPath(int pX, int pY){
@@ -285,7 +350,8 @@ void endPath(){
 				continue;
 			}
 						
-			alphaMask[off] = ptr[off];
+			//alphaMask[off] = ptr[off];
+			alphaMask[off] = layersPtr[cL][off];
 			buffer[off] = 0;
 		}
 	}
@@ -306,7 +372,7 @@ void setBrushProperties(int rin, int mode, int alpha, int setEraseMode){
 	clearBrushes();
 
 	if(mode == 0){
-		computeCircleMask(R*2, a, brush, brushGuide); //circle mask
+		computeAACircleMask(R*2, a, brush, brushGuide);
 	}
 
 	if(mode == 1){
@@ -314,13 +380,7 @@ void setBrushProperties(int rin, int mode, int alpha, int setEraseMode){
 	}
 
 	eraseMode = setEraseMode;
-
-
 }
-
-
-int oldx = -1;
-int oldy = -1;
 
 void setOverlay(int x, int y){
 	int r = R * 2;
@@ -349,13 +409,29 @@ void setOverlay(int x, int y){
 }
 
 void blendLayers(){
+	for(int layer = 0; layer < maxLayers; layer++){
+		//skip all hidden and uncreated layers
+		if(layers[layer] != 0x02) { continue; }
+
+		for(int i = 0; i < WIDTH; i++){
+			for(int j = 0; j < HEIGHT; j++){
+				int idx = i + j*WIDTH;
+
+				uint32_t oldColor = screen[idx];
+				uint32_t newColor = layersPtr[layer][idx];
+
+
+				screen[idx] = AlphaBlendPixels(oldColor, newColor);
+			}
+		}
+	}
+	
+	//blend the overlay on top
 	for(int i = 0; i < WIDTH; i++){
 		for(int j = 0; j < HEIGHT; j++){
 			int idx = i + j*WIDTH;
 
-			screen[idx] = ptr[idx];
-
-			if(overlay[idx] == 255){
+			if(overlay[idx] != 0){
 				screen[idx] = (overlay[idx] << 24) | (0 << 16) | (0 << 8) | 0;
 			}
 		}
@@ -368,46 +444,95 @@ void setColor(int red, int green, int blue){
 	BLUE = blue;
 }
 
-//layers API below: (draft of what it would look like)
-
-//1.0 MVP--------------------------------------------
-
-/*
 //add a layer to the top of the stack
 void addLayer(){
-	numLayers++;
-	layers[numLayers] = numLayers;
-	visibleLayers[numLayers] = 1;
+	if(layerCount + 1 < maxLayers){
+		layerCount++;					//increment layer counter
+		layers[layerCount] = 0x02; 		//set current layer as visible
+	}
 }
 
 //select given layer for drawing
 void selectActiveLayer(int layer){
-	if(visibleLayers[layer] == 1){
-		activeLayer = layer;
+	if(layers[layer] == 0x02){
+		cL = layer;
+	}
+
+	//composite last layers and write this to alpha mask
+	for(int layer = 0; layer < cL; layer++){
+		//skip all hidden and uncreated layers
+		if(layers[layer] != 0x02) { continue; }
+
+		for(int i = 0; i < WIDTH; i++){
+			for(int j = 0; j < HEIGHT; j++){
+				int idx = i + j*WIDTH;
+
+				uint32_t oldColor = screen[idx];
+				uint32_t newColor = layersPtr[layer][idx];
+
+
+				alphaMask[idx] = AlphaBlendPixels(oldColor, newColor);
+			}
+		}
 	}
 }
 
 //remove current layer from system
 void removeLayer(int layer){
-
+	layers[layer] = 0; //"hide" for now
 }
 
 //set layer as visible or invisible
 void toggleLayerVisibility(int layer){
-	int status = visibleLayers[layer];
-	if(status == 0){
-		visibleLayers[layer] = 1;
-	} else {
-		visibleLayers[layer] = 0;
+	int status = layers[layer];
+	if(status == 1){
+		layers[layer] = 2;
+	} else if (status == 2){
+		layers[layer] = 1;
 	}
 }
 
-//list of layers can be grabbed in JS side of things!
-
-//2.0---------------------
-
-//set order of layers
-void setLayerOrder(){
-
+uint8_t* layerArrayAddress(){
+	return layers;
 }
-*/
+
+void initSystem(){
+	R = 5;
+
+	int nbr = (2 * R) * (2 * R);
+	brush = (int*)malloc(nbr * sizeof(int));
+	brushGuide = (int*)malloc(nbr * sizeof(int));
+	clearBrushes();
+
+	int nb = WIDTH * HEIGHT;
+	buffer = (int*)malloc(nb * sizeof(int));
+	alphaMask = (int*)malloc(nb * sizeof(int));
+	overlay = (int*)malloc(nb * sizeof(int));
+	ptr = (int*)malloc(nb * sizeof(int));
+
+	computeAACircleMask(R*2, 1.0, brush, brushGuide);
+
+	//preallocate all layers for now...this is ugly. Clean up later!
+	//"don't malloc in a for loop"
+	layersPtr[0] = (int*)malloc(nb * sizeof(int));
+	layersPtr[1] = (int*)malloc(nb * sizeof(int));
+	layersPtr[2] = (int*)malloc(nb * sizeof(int));
+	layersPtr[3] = (int*)malloc(nb * sizeof(int));
+	layersPtr[4] = (int*)malloc(nb * sizeof(int));
+	layersPtr[5] = (int*)malloc(nb * sizeof(int));
+	layersPtr[6] = (int*)malloc(nb * sizeof(int));
+	layersPtr[7] = (int*)malloc(nb * sizeof(int));
+	layersPtr[8] = (int*)malloc(nb * sizeof(int));
+	layersPtr[9] = (int*)malloc(nb * sizeof(int));
+
+	clearScreen();
+
+	//layers api
+	cL = 0; 		//set current selected layer
+	layerCount = 0;	//define first layer as OK
+	layers[cL] = 0x02;		//set current layer as visible
+
+	//clear current layer
+	setLayerColor(cL, 0xffffffff);
+	selectActiveLayer(cL);
+}
