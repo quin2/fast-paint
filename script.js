@@ -73,6 +73,9 @@ async function main(){
 
 	//reset button
 	const resetBtn = document.getElementById('reset');
+
+	//save button
+	const saveBtn = document.getElementById('save');
 	//event listeners--------------------------------------------
 
 	//shortcut keys
@@ -108,6 +111,9 @@ async function main(){
 
 	//reset global state
 	resetBtn.addEventListener('click', handleFullReset);
+
+	//save
+	saveBtn.addEventListener('click', runExport);
 
 	//core functions--------------------------------------------
 	async function entry(){
@@ -384,6 +390,14 @@ async function main(){
 			"starting over" without having to reload the wasm binary, etc. Think of it as pressing a "new canvas"
 			button
   		*/
+  	}
+
+  	function runExport(){
+  		const dataURL = canvas.toDataURL("image/png");
+  		const a = document.createElement('a');
+  		a.href = dataURL;
+  		a.download = "hello.png";
+  		a.click();
   	}
 
   	//helper functions--------------------------------------------
