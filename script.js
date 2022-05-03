@@ -1,20 +1,16 @@
 window.addEventListener('load', main);
 
 async function main(){
-	//globals
-	const canvas = document.getElementById('c');
-	var rect = canvas.getBoundingClientRect();
+	//global variables--------------------------------------------
 
-	let clicked = false;
-
-	var ctx = canvas.getContext('2d');
-	console.log(ctx);
-
+	//consts
 	const width = 500;
 	const height = 500;
 
 	const byteSize = height * width * 4;
 
+	//variables
+	let clicked = false;
 	var points = [];
 
 	var currentBrushR;
@@ -22,40 +18,139 @@ async function main(){
 	var eraseMode;
 
 	var currentLayer = 0;
-
 	var scaleConstant = 1.0;
 
-	//init system
-	const b2p = function bytesToPages(bytes) { return Math.ceil(bytes / 64_000); }
-	const memory = new WebAssembly.Memory({initial: 1000});
-	let resp = await fetch("buffer.wasm");
-	let bytes = await resp.arrayBuffer();
+	var currentTool; //0=paintbrush 1=eraser
 
-	const { instance } = await WebAssembly.instantiate(bytes, {
-		env: { memory }
-	});
+	var sizeConstant = 100
 
-	function allocateSystem(){
-		
-	}
-	
+	var sourceX, sourceY, sourceLeft, sourceTop;
 
-	var pointer = instance.exports.allocate(width, height);
-	instance.exports.initSystem();
+	var lastPosX = -1;
+	var lastPosY = -1;
 
-	//testing only
-	instance.exports.blendLayers();
-	var usub = new Uint8ClampedArray(memory.buffer, pointer, byteSize);
-	img = new ImageData(usub, width, height);
-	ctx.putImageData(img, 0, 0);
+	//core pointers to shared memory - be careful with these
+	var instance;
+	var memory;
+	var pointer;
 
+	//element bindings--------------------------------------------
 
+	//canvas binds
+	const canvas = document.getElementById('c');
+	var rect = canvas.getBoundingClientRect();
+	var ctx = canvas.getContext('2d');
 
-	//function handlers here 
-	var img;
-	
+	//area outside of canvas
+	const windowShim = document.getElementById('windowShim');
+
+	//main draw area, contains shim and canvas
+	const drawArea = document.getElementById('drawArea');
+
 	//color selection control
 	const colorPicker = document.getElementById('brushC');
+
+	//brush selection control
+	const circleButton = document.getElementById("circlebrush");
+	const squareButton = document.getElementById("squarebrush");
+	const cursorButton = document.getElementById("cursorbrush");
+	const eraseModeCheckbox = document.getElementById("eraseMode");
+
+	//size control
+	const sizeSlider = document.getElementById('sizeSlider');
+	const sizeStatus = document.getElementById('size');
+
+	//alpha control
+	const alphaSlider = document.getElementById('alphaSlider');
+	const alphaStatus = document.getElementById('alpha');
+
+	//layer control ui
+	const addLayer = document.getElementById('addLayer');
+	const hideLayer = document.getElementById('hideLayer');
+	const layersPicker = document.getElementById('layers');
+	const layerStatusElement = document.getElementById('layerStatus');
+	const clearBtn = document.getElementById('clear');
+
+	//reset button
+	const resetBtn = document.getElementById('reset');
+	//event listeners--------------------------------------------
+
+	//shortcut keys
+	document.addEventListener('keydown', handleShortcut);
+
+	//window change events
+	window,addEventListener('resize', updateBoundingRect);
+
+	//layer handlers
+	addLayer.addEventListener('click', addLayerHandler);
+	hideLayer.addEventListener('click', hideLayerHandler);
+	layersPicker.addEventListener('change', changeSelectedLayer);
+	clearBtn.addEventListener('click', handleClearLayer);
+
+	//main draw handlers
+	canvas.addEventListener('mousemove', drawOnCanvas);
+	canvas.addEventListener('mouseup', handleMouseUp);
+	canvas.addEventListener('mousedown', handleMouseDown);
+	canvas.addEventListener('mouseleave', handlePathEnd);
+
+	//tool handlers
+	circleButton.addEventListener('change', readRadio);
+	squareButton.addEventListener('change', readRadio);
+	eraseModeCheckbox.addEventListener('change', readEraseMode);
+
+	//recalculate bounds on scroll
+	drawArea.addEventListener('scroll', updateBoundingRect);	
+
+	//brush controls
+	sizeSlider.addEventListener('change', updateSize);
+	alphaSlider.addEventListener('change', updateAlpha);
+	colorPicker.addEventListener('change', updateColor);
+
+	//reset global state
+	resetBtn.addEventListener('click', handleFullReset);
+
+	//core functions--------------------------------------------
+	async function entry(){
+		//init system
+		const b2p = function bytesToPages(bytes) { return Math.ceil(bytes / 64_000); }
+		memory = new WebAssembly.Memory({initial: 1000});
+		let resp = await fetch("buffer.wasm");
+		let bytes = await resp.arrayBuffer();
+
+		const lI = await WebAssembly.instantiate(bytes, {
+			env: { memory }
+		});
+		instance = lI.instance;
+
+		console.log(instance);
+
+		//allocate canvas and init
+		pointer = instance.exports.allocate(width, height);
+		instance.exports.initSystem();
+
+		//place canvas buffer on screen
+		updateCanvas();
+
+		//update color picker
+		updateColor();
+
+		//read current brush
+		readRadio();
+
+		//check erase mode
+		readEraseMode();
+
+		//check size control
+		updateSize();
+
+		//check alpha
+		updateAlpha();
+
+		//update list of layers
+		updateLayersHandler();
+	}
+	entry(); //run core function on init!
+
 	function updateColor(){
 		const hexValue = colorPicker.value.substring(1);
 		const aRgbHex = hexValue.match(/.{1,2}/g);  
@@ -66,13 +161,7 @@ async function main(){
 
         instance.exports.setColor(r, g, b);
 	}
-	updateColor();
-
-	//brush selection control
-	const circleButton = document.getElementById("circlebrush");
-	const squareButton = document.getElementById("squarebrush");
-	const cursorButton = document.getElementById("cursorbrush");
-	var currentTool; //0=paintbrush 1=eraser
+	
 	function readRadio(){
 		if(circleButton.checked){
 			updateColor();
@@ -90,10 +179,7 @@ async function main(){
 
 		instance.exports.setBrushProperties(currentBrushR, currentTool, currentBrushAlpha, eraseMode);
 	}
-	readRadio();
 
-	//erase mode control (v2)
-	const eraseModeCheckbox = document.getElementById("eraseMode");
 	function readEraseMode(){
 		if(eraseModeCheckbox.checked){
 			eraseMode = 1;
@@ -104,30 +190,21 @@ async function main(){
 		//do this as a hack, to init a full refresh of all properties. Will have to refactor later
 		readRadio();
 	}
-	readEraseMode();
 
-	//size control
-	const sizeSlider = document.getElementById('sizeSlider');
-	const sizeStatus = document.getElementById('size');
 	function updateSize(){
 		currentBrushR = sizeSlider.value;
 		sizeStatus.innerHTML = currentBrushR;
 		
 		instance.exports.setBrushProperties(currentBrushR, currentTool, currentBrushAlpha, eraseMode);
 	}
-	updateSize();
 
-	//alpha control
-	const alphaSlider = document.getElementById('alphaSlider');
-	const alphaStatus = document.getElementById('alpha');
 	function updateAlpha(){
 		currentBrushAlpha = alphaSlider.value;
 		alphaStatus.innerHTML = currentBrushAlpha;
 		
 		instance.exports.setBrushProperties(currentBrushR, currentTool, currentBrushAlpha, eraseMode);
 	}
-	updateAlpha();
-
+	
 	//layer control
 	function getLayerStatus(){
 		const layerArrayAddress = instance.exports.layerArrayAddress();
@@ -135,10 +212,6 @@ async function main(){
 
 		return layerStatus;
 	}
-
-	const addLayer = document.getElementById('addLayer');
-	const hideLayer = document.getElementById('hideLayer');
-	const layersPicker = document.getElementById('layers');
 
 	function changeSelectedLayer(){
 		currentLayer = layers.value;
@@ -158,14 +231,11 @@ async function main(){
 		instance.exports.toggleLayerVisibility(currentLayer);
 
 		instance.exports.blendLayers();
-		var usub = new Uint8ClampedArray(memory.buffer, pointer, byteSize);
-		img = new ImageData(usub, width, height);
-		ctx.putImageData(img, 0, 0);
+		updateCanvas();
 
 		updateLayerVisibility();
 	}
 
-	const layerStatusElement = document.getElementById('layerStatus');
 	function updateLayerVisibility(){
 		const layerStatus = getLayerStatus();
 
@@ -197,15 +267,8 @@ async function main(){
 		//reselect
 		layers.value = currentLayer;
 	}
-	updateLayersHandler();
-
-	//scaling controls
-	const windowShim = document.getElementById('windowShim');
-	document.addEventListener('keydown', handleShortcut);
 
 	function handleShortcut(e){
-		console.log(e.keyCode);
-
 		if(e.keyCode == 187 && e.shiftKey){
 			zoomIn();
 		}
@@ -214,7 +277,6 @@ async function main(){
 		}
 	}
 
-	let sizeConstant = 100
 	function zoomIn(){
 		scaleConstant += 0.1;
 		canvas.style.transform = `scale(${scaleConstant})`;
@@ -238,23 +300,7 @@ async function main(){
 		rect = canvas.getBoundingClientRect();
 	}
 
-	//window resize handling
-	window,addEventListener('resize', calcOffset);
-	function calcOffset(){
-		rect = canvas.getBoundingClientRect();
-	}
-
-	//general cursor handlers
-
-	//resz
-	const drawArea = document.getElementById('drawArea');
-	drawArea.addEventListener('scroll', function(e){
-		rect = canvas.getBoundingClientRect();
-	})
-
-	var sourceX, sourceY, sourceLeft, sourceTop;
-
-	canvas.addEventListener('mousedown', function(e){
+	function handleMouseDown(e){
 		let x = (event.clientX - rect.left) / scaleConstant;
 	    let y = (event.clientY - rect.top) / scaleConstant;
 
@@ -268,28 +314,17 @@ async function main(){
 
 		if(!cursorButton.checked){
 			instance.exports.startPath(x, y);
-			instance.exports.blendLayers();
 		}
+	}
 
-
-	});
-
-	canvas.addEventListener('mouseup', function(e){
+	function handleMouseUp(e){
 		if(!cursorButton.checked){
-			var usub = new Uint8ClampedArray(memory.buffer, pointer, byteSize);
-			img = new ImageData(usub, width, height);
-			ctx.putImageData(img, 0, 0);
-
+			updateCanvas();
 			instance.exports.endPath();
 		}
 
 		clicked = false;
-	});
-
-	canvas.addEventListener('mousemove', (e) => drawOnCanvas(e));
-
-	var lastPosX = -1;
-	var lastPosY = -1;
+	}
 
 	function drawOnCanvas(event){
 		let x = (event.clientX - rect.left) / scaleConstant;
@@ -320,11 +355,7 @@ async function main(){
 				}
 			} 
 
-			instance.exports.blendLayers();
-
-			var usub = new Uint8ClampedArray(memory.buffer, pointer, byteSize);
-			img = new ImageData(usub, width, height);
-			ctx.putImageData(img, 0, 0);
+			updateCanvas()
 		} else {
 			if(clicked){
 				drawArea.scroll(sourceLeft - (event.clientX - sourceX), sourceTop - (event.clientY - sourceY))
@@ -332,55 +363,39 @@ async function main(){
 		}
 	}
 
-  	canvas.addEventListener('mouseleave', function(e){
-  		if(clicked){
+	function handlePathEnd(e){
+		if(clicked){
 			clicked = false;
 			instance.exports.endPath();
   		}
 
   		instance.exports.clearOverlay();
-  		instance.exports.blendLayers();
+    	updateCanvas();
+	}
 
-    	var usub = new Uint8ClampedArray(memory.buffer, pointer, byteSize);
-		img = new ImageData(usub, width, height);
-		ctx.putImageData(img, 0, 0);
-  	});
+  	function handleClearLayer(){
+  		instance.exports.clearCurrentLayer();
+		updateCanvas();
+  	}
 
+  	function handleFullReset(){
+  		/*
+			goal for this is to reset all canvas state back to its original place, to simulate
+			"starting over" without having to reload the wasm binary, etc. Think of it as pressing a "new canvas"
+			button
+  		*/
+  	}
 
-	const clearBtn = document.getElementById('clear');
-	clearBtn.addEventListener('click', function(e) {
-		instance.exports.clearCurrentLayer();
+  	//helper functions--------------------------------------------
+  	function updateBoundingRect(){
+		rect = canvas.getBoundingClientRect();
+	}
+
+	function updateCanvas(){
 		instance.exports.blendLayers();
 
-		var usub = new Uint8ClampedArray(memory.buffer, pointer, byteSize);
-		img = new ImageData(usub, width, height);
+		const usub = new Uint8ClampedArray(memory.buffer, pointer, byteSize);
+		const img = new ImageData(usub, width, height);
 		ctx.putImageData(img, 0, 0);
-	});
-
-	const resetBtn = document.getElementById('reset');
-	resetBtn.addEventListener('click', function(e) {
-
-	})
-
-	sizeSlider.addEventListener('change', function(e) {
-		updateSize();
-	});
-
-	alphaSlider.addEventListener('change', function(e) {
-		updateAlpha();
-	});
-
-	colorPicker.addEventListener('change', function(e){
-		updateColor();
-	})
-
-	circleButton.addEventListener('change', readRadio);
-	squareButton.addEventListener('change', readRadio);
-
-	eraseModeCheckbox.addEventListener('change', readEraseMode);	
-
-	//layer mode
-	addLayer.addEventListener('click', addLayerHandler);
-	hideLayer.addEventListener('click', hideLayerHandler);
-	layersPicker.addEventListener('change', changeSelectedLayer);
+	}
 }

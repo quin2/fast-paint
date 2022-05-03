@@ -70,11 +70,6 @@ int* allocate(int width, int height){
 	return screen;
 }
 
-void dealloc(){
-	free(ptr);
-}
-
-
 void setBrushPixel(int *brush, int width, int x, int y, int value){
 	brush[x + (y * width)] = value;
 }
@@ -535,4 +530,13 @@ void initSystem(){
 	//clear current layer
 	setLayerColor(cL, 0xffffffff);
 	selectActiveLayer(cL);
+}
+
+//free all shared memory
+void dealloc(){
+	free(buffer);
+	free(alphaMask);
+	free(overlay);
+	free(ptr);
+	free(layersPtr);
 }
