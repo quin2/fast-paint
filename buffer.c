@@ -452,24 +452,6 @@ void selectActiveLayer(int layer){
 	if(layers[layer] == 0x02){
 		cL = layer;
 	}
-
-	//composite last layers and write this to alpha mask
-	for(int layer = 0; layer < cL; layer++){
-		//skip all hidden and uncreated layers
-		if(layers[layer] != 0x02) { continue; }
-
-		for(int i = 0; i < WIDTH; i++){
-			for(int j = 0; j < HEIGHT; j++){
-				int idx = i + j*WIDTH;
-
-				uint32_t oldColor = screen[idx];
-				uint32_t newColor = layersPtr[layer][idx];
-
-
-				alphaMask[idx] = AlphaBlendPixels(oldColor, newColor);
-			}
-		}
-	}
 }
 
 //remove current layer from system

@@ -134,6 +134,11 @@ async function main(){
 		pointer = instance.exports.allocate(width, height);
 		instance.exports.initSystem();
 
+		readInputs();
+	}
+	entry(); //run core function on init!
+
+	function readInputs(){
 		//place canvas buffer on screen
 		updateCanvas();
 
@@ -155,7 +160,6 @@ async function main(){
 		//update list of layers
 		updateLayersHandler();
 	}
-	entry(); //run core function on init!
 
 	function updateColor(){
 		const hexValue = colorPicker.value.substring(1);
@@ -385,11 +389,20 @@ async function main(){
   	}
 
   	function handleFullReset(){
-  		/*
-			goal for this is to reset all canvas state back to its original place, to simulate
-			"starting over" without having to reload the wasm binary, etc. Think of it as pressing a "new canvas"
-			button
-  		*/
+  		//free old memory
+  		instance.exports.dealloc()
+
+  		//alloc canvas buffer
+  		pointer = instance.exports.allocate(width, height);
+
+  		//initalize rest of system
+  		instance.exports.initSystem();
+
+  		//update canvas
+  		updateCanvas();
+
+  		//read inputs and update system to match
+  		readInputs();
   	}
 
   	function runExport(){
