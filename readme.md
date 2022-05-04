@@ -2,20 +2,22 @@
 
 ## fast-paint is a painting program for the web, built from the ground up in webassembly. 
 
-Hosted demo is [here](https://fast-paint.quin2.repl.co)
-
 ### features
 * dynamic canvas size
 * anti-aliased brush with adjustable size
 * eraser
 * tool guides
 * fast
+* brush opacity
+* layers
+* canvas movement/scaling
+* export
 
 ### future
-* layers
-* adjustable brush opacity
+* delete/change layer order
+* export and import all layers
+* variable width brushes
 * image placement
-* free canvas movement/scaling
 
 ## Why and How
 I wanted to learn how digital painting programs like Photoshop and Clip Studio work. Figma is really good for graphic design, but there isn't a real equivalent for illustration on the web that is free. I started working in JavaScript at first, but it ended up being too slow, and array access to represent the canvas was really awful.
@@ -28,14 +30,8 @@ There wasn't really any good tutorials or documentation on how to make this kind
 
 I didn't really use anything like Emscripten either, to keep binary sizes small, and because I wanted to learn about wasm/JS interop, not have it abstracted away from me. 
 
+## Play
+Host the repo folder contents from a static web server, or use the included python file to host.
+
 ## Building
-
-This project was written in C with Wasi to handle memory allocation. To build it, you'll want to have a copy of clang handy, and have wasi set up on your machine as well. [This blog](https://depth-first.com/articles/2019/10/16/compiling-c-to-webassembly-and-running-it-without-emscripten/) had some great writing about how to set up everything you'll need. I also included the noCacheServer.py which is useful if you're making lots of chhanges to the binary and don't want your browser to cache it. If you just want to mess around with the binary, it's also included in this repo, and all you'll have to do is access the exposed functions to do specific stuff with the canvas. 
-
-## future work list
-* better anti-aliased circle brushes
-* remove layers and change layer order
-* wrap canvas functions in shell
-* image export
-* layer transparency
-* dynamic brushes w/pressure sensitivity
+This project was written in C with Wasi to handle memory allocation and other things. To build it, [go here](https://github.com/WebAssembly/wasi-sdk/releases) and get version 8. Newer versions create binaries that rely on additional polyfills to run in browsers correctly. Then, define the variables in make.

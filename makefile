@@ -1,5 +1,6 @@
 make: buffer.c
-	clang \
+	$(wasi_8) \
+	--sysroot=$(wasi_sysroot) \
 	--target=wasm32-unknown-wasi \
 	-ferror-limit=50 \
 	--sysroot /tmp/wasi-libc \
